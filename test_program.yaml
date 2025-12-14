@@ -1,0 +1,31 @@
+# Тестовая программа для УВМ (Вариант 3)
+# Команды из спецификации
+
+program:
+  # Тест 1: LOAD 515, 4
+  # A=29, B=515, C=4
+  # Ожидается: 0xDD, 0x80, 0x00, 0x10
+  - command: "LOAD"
+    value: 515
+    register: 4
+
+  # Тест 2: READ 0, 2
+  # A=18, B=0, C=2
+  # Ожидается: 0x12, 0x10, 0x00, 0x00
+  - command: "READ"
+    dest_register: 0
+    addr_register: 2
+
+  # Тест 3: WRITE 13, 24
+  # A=9, B=13, C=24
+  # Ожидается: 0x49, 0xC3, 0x00, 0x00
+  - command: "WRITE"
+    addr_register: 13
+    src_register: 24
+
+  # Тест 4: ABS 26, 22
+  # A=25, B=26, C=22
+  # Ожидается: 0x99, 0xB6, 0x00, 0x00
+  - command: "ABS"
+    addr_register: 26
+    src_register: 22
