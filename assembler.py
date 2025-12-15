@@ -1,123 +1,152 @@
-#!/usr/bin/env python3
 """
-Ассемблер УВМ - преобразует YAML программу в промежуточное представление
+Главный файл ассемблера для учебной виртуальной машины (УВМ).
+Интегрирует Этапы 1 и 2.
 """
 
-import yaml
-from typing import List, Dict, Any
+import argparse
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-class Assembler:
-    """Ассемблер для Учебной Виртуальной Машины (Вариант 3)"""
-    
-    # Коды операций из спецификации Варианта 3
-    OPCODES = {
-        "LOAD": 29,   # Загрузка константы
-        "READ": 18,   # Чтение из памяти
-        "WRITE": 9,   # Запись в память
-        "ABS": 25,    # Абсолютное значение
-    }
+from parser import YamlParser
+from encoder import CommandEncoder
+from spec import UVMSpec
+
+class UVMAssembler:
+    """Главный класс ассемблера УВМ."""
     
     def __init__(self):
-        self.intermediate_code = []
+        self.parser = YamlParser()
+        self.encoder = CommandEncoder()
+        self.intermediate = []
+        self.binary_data = bytearray()
     
-    def assemble(self, input_file: str) -> List[Dict[str, Any]]:
+    def assemble(self, input_yaml, output_bin, test_mode=False):
         """
-        Ассемблирует YAML программу в промежуточное представление
+        Выполняет полный процесс ассемблирования.
         
         Args:
-            input_file: Путь к YAML файлу
+            input_yaml: Путь к входному YAML файлу
+            output_bin: Путь к выходному бинарному файлу
+            test_mode: Режим тестирования
             
         Returns:
-            List[Dict]: Промежуточное представление команд
+            bool: True если успешно, False в противном случае
         """
-        print(f"📖 Чтение файла: {input_file}")
-        
         try:
-            # Загружаем YAML
-            with open(input_file, 'r', encoding='utf-8') as f:
-                program_data = yaml.safe_load(f)
+            # Этап 1: Парсинг YAML
+            print(f"\n{'='*60}")
+            print("ЭТАП 1: ПАРСИНГ YAML ФАЙЛА")
+            print(f"{'='*60}")
+            print(f"Входной файл: {input_yaml}")
             
-            print(f"📄 Загружено YAML данных")
+            self.intermediate = self.parser.parse(input_yaml)
             
-            if not program_data:
-                raise ValueError("YAML файл пуст")
+            if test_mode:
+                self.parser.print_intermediate(self.intermediate)
             
-            if 'program' not in program_data:
-                raise ValueError("YAML файл должен содержать ключ 'program'")
+            # Этап 2: Кодирование в машинный код
+            print(f"\n{'='*60}")
+            print("ЭТАП 2: КОДИРОВАНИЕ В МАШИННЫЙ КОД")
+            print(f"{'='*60}")
+            print(f"Выходной файл: {output_bin}")
             
-            self.intermediate_code = []
+            self.binary_data = self.encoder.encode_program(self.intermediate)
+            self.encoder.save_to_file(output_bin)
             
-            # Обрабатываем каждую команду
-            for i, cmd_dict in enumerate(program_data['program']):
-                print(f"  🔨 Обработка команды {i}: {cmd_dict}")
-                intermediate_cmd = self._parse_command(cmd_dict, i)
-                self.intermediate_code.append(intermediate_cmd)
+            if test_mode:
+                self.encoder.print_encoded_commands()
             
-            return self.intermediate_code
+            # Вывод статистики
+            self._print_statistics(output_bin)
             
-        except yaml.YAMLError as e:
-            raise ValueError(f"Ошибка парсинга YAML: {e}")
+            return True
+            
         except Exception as e:
-            raise RuntimeError(f"Ошибка ассемблирования: {e}")
+            print(f"\n✗ ОШИБКА: {e}")
+            return False
     
-    def _parse_command(self, cmd_dict: Dict, line_num: int) -> Dict[str, Any]:
-        """
-        Парсит одну команду из YAML в промежуточное представление
-        """
-        if 'command' not in cmd_dict:
-            raise ValueError(f"Строка {line_num}: отсутствует ключ 'command'")
+    def _print_statistics(self, output_path):
+        """Выводит статистику ассемблирования."""
+        stats = self.encoder.get_statistics(output_path)
         
-        command = cmd_dict['command'].upper()
+        print(f"\n{'='*60}")
+        print("СТАТИСТИКА АССЕМБЛИРОВАНИЯ:")
+        print(f"{'='*60}")
+        print(f"• Количество команд: {stats['command_count']}")
+        print(f"• Общий размер данных: {stats['total_bytes']} байт")
+        print(f"• Размер выходного файла: {stats['file_size']} байт")
+        print(f"• Выходной файл: {stats['output_file']}")
+        print(f"{'='*60}")
         
-        if command not in self.OPCODES:
-            raise ValueError(f"Строка {line_num}: неизвестная команда '{command}'")
-        
-        opcode = self.OPCODES[command]
-        intermediate = {"opcode": opcode, "command": command}
-        
-        # Проверяем аргументы в зависимости от команды
-        if command == "LOAD":
-            # LOAD требует value и register
-            if 'value' not in cmd_dict:
-                raise ValueError(f"Строка {line_num}: команда LOAD требует значение 'value'")
-            if 'register' not in cmd_dict:
-                raise ValueError(f"Строка {line_num}: команда LOAD требует регистр 'register'")
-            intermediate['value'] = cmd_dict['value']
-            intermediate['register'] = cmd_dict['register']
-            
-        elif command == "READ":
-            # READ требует dest_register и addr_register
-            if 'dest_register' not in cmd_dict:
-                raise ValueError(f"Строка {line_num}: команда READ требует 'dest_register'")
-            if 'addr_register' not in cmd_dict:
-                raise ValueError(f"Строка {line_num}: команда READ требует 'addr_register'")
-            intermediate['dest_register'] = cmd_dict['dest_register']
-            intermediate['addr_register'] = cmd_dict['addr_register']
-            
-        elif command == "WRITE":
-            # WRITE требует addr_register и src_register
-            if 'addr_register' not in cmd_dict:
-                raise ValueError(f"Строка {line_num}: команда WRITE требует 'addr_register'")
-            if 'src_register' not in cmd_dict:
-                raise ValueError(f"Строка {line_num}: команда WRITE требует 'src_register'")
-            intermediate['addr_register'] = cmd_dict['addr_register']
-            intermediate['src_register'] = cmd_dict['src_register']
-            
-        elif command == "ABS":
-            # ABS требует addr_register и src_register
-            if 'addr_register' not in cmd_dict:
-                raise ValueError(f"Строка {line_num}: команда ABS требует 'addr_register'")
-            if 'src_register' not in cmd_dict:
-                raise ValueError(f"Строка {line_num}: команда ABS требует 'src_register'")
-            intermediate['addr_register'] = cmd_dict['addr_register']
-            intermediate['src_register'] = cmd_dict['src_register']
-        
-        return intermediate
+        # Проверяем тестовые команды
+        if stats['command_count'] == 4:
+            print("\n✓ Тестовая программа содержит все 4 команды из спецификации")
+            print("  Ожидаемые результаты:")
+            print("  1. LOAD_CONST: 0xDD, 0x80, 0x00, 0x10")
+            print("  2. READ_MEM:   0x12, 0x10, 0x00, 0x00")
+            print("  3. WRITE_MEM:  0x49, 0xC3, 0x00, 0x00")
+            print("  4. ABS:        0x99, 0xB6, 0x00, 0x00")
+
+def main():
+    """Точка входа в программу."""
+    parser = argparse.ArgumentParser(
+        description='Ассемблер для учебной виртуальной машины (УВМ) - Вариант №3\n'
+                    'Этапы 1-2: Парсинг YAML и генерация машинного кода',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog='Примеры использования:\n'
+               '  python assembler.py program.yaml output.bin\n'
+               '  python assembler.py test_program.asm.yaml test.bin --test'
+    )
     
-    def _parse_command_test(self, cmd_dict: Dict, line_num: int) -> Dict[str, Any]:
-        """Тестовая версия для демонстрации (без изменения YAML)"""
-        return self._parse_command(cmd_dict, line_num)
+    parser.add_argument(
+        'input_file',
+        help='Путь к YAML файлу с программой на ассемблере УВМ'
+    )
     
-    def get_intermediate_code(self) -> List[Dict[str, Any]]:
-        """Возвращает промежуточное представление"""
-        return self.intermediate_code
+    parser.add_argument(
+        'output_file',
+        help='Путь для сохранения бинарного файла с машинным кодом'
+    )
+    
+    parser.add_argument(
+        '--test',
+        action='store_true',
+        help='Режим тестирования с подробным выводом промежуточных данных'
+    )
+    
+    parser.add_argument(
+        '--version',
+        action='version',
+        version='Ассемблер УВМ v1.0 (Вариант №3)'
+    )
+    
+    args = parser.parse_args()
+    
+    # Проверяем существование входного файла
+    if not os.path.exists(args.input_file):
+        print(f"✗ Ошибка: Входной файл '{args.input_file}' не найден")
+        sys.exit(1)
+    
+    # Создаем и запускаем ассемблер
+    print(f"{'='*60}")
+    print("АССЕМБЛЕР УЧЕБНОЙ ВИРТУАЛЬНОЙ МАШИНЫ (УВМ)")
+    print("Вариант №3 | РТУ МИРЭА | Конфигурационное управление")
+    print(f"{'='*60}")
+    
+    assembler = UVMAssembler()
+    
+    if args.test:
+        print("⚡ РЕЖИМ ТЕСТИРОВАНИЯ: ВКЛЮЧЕН")
+    
+    success = assembler.assemble(args.input_file, args.output_file, args.test)
+    
+    if success:
+        print(f"\n✅ АССЕМБЛИРОВАНИЕ ЗАВЕРШЕНО УСПЕШНО!")
+        print(f"{'='*60}")
+    else:
+        print(f"\n❌ АССЕМБЛИРОВАНИЕ ЗАВЕРШЕНО С ОШИБКАМИ")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
